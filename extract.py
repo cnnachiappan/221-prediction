@@ -1,5 +1,6 @@
 #!/usr/bin/python
 import re
+import math 
 
 from pdfminer.pdfparser import PDFParser
 from pdfminer.pdfdocument import PDFDocument
@@ -14,6 +15,14 @@ from pdfminer.pdfparser import PDFParser
 from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter
 from pdfminer.converter import PDFPageAggregator
 from pdfminer.layout import LAParams, LTTextBox, LTTextLine, LTFigure, LTImage, LTChar, LTAnno, LTText, LTTextBoxHorizontal
+
+num_ids = 0
+num_statuss = 0
+num_dates = 0
+list_ids = []
+list_statuss = []
+list_dates = []
+
 
 def to_bytestring (s, enc='utf-8'):
     """Convert the given unicode string to a bytestring, using the standard encoding,
@@ -47,18 +56,76 @@ def update_page_text_hash (h, lt_obj, pct=0.2):
     return h
 
 
+def process_for_id(text):
+    firstfour_bytes = text[:4]    
+    if firstfour_bytes.isdigit():             
+        global num_ids
+        num_ids+=1
+        return float(text)
+    else:
+        return -1
+
+def process_for_date(text):
+    accepted_months = { 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec' }
+    month = text[len(text)-6:len(text)-3]
+    if month in accepted_months:        
+        global num_dates
+        num_dates+=1
+        return text
+    else:    
+        return -1
+    return
+
+def process_for_status(text):
+    #possible status terms
+    possible_words = ["pending", "sent", "send", "processed", "CASE" ]
+    if any(x in text for x in possible_words):
+        global num_statuss
+        num_statuss+=1
+        return 1
+    else:
+        return -1
+    return    
+
 def dataparse_lt_objs(line_text):
-     cuttext = re.sub(r'.*u\'',"", line_text)
-     rstrip1 = cuttext.rstrip('>')
-     rstrip2 = rstrip1.rstrip('\'')
-     #print rstrip2, "\n"
+    cuttext = re.sub(r'.*u\'',"", line_text)
+    rstrip1 = cuttext.rstrip('>')
+    rstrip2 = rstrip1.rstrip('\'')
+    #print rstrip2, "\n"
+    data = rstrip2.split("\\n")
 
-     data = rstrip2.split("\\n")
-     for datapoints in data:
-        print datapoints
+    for datapoints in data:
+        #Skip all empty lines
+        textlen = len(datapoints)
+        if textlen == 0 or datapoints.isspace():
+            continue
 
+        # Check if text is Application  ID
+        appid = process_for_id(datapoints)
+        if appid != -1:
+            # It was a application ID
+            list_ids.append(appid)
+            print "Id Number:", appid
+            continue
 
-     return
+        # Check if text is App submission Date
+        dateval = process_for_date(datapoints)
+        if dateval != -1:
+            # It was a application ID
+            list_dates.append(dateval)
+            print "Date:", dateval
+            continue   
+
+        # Check if text is App Status
+        status = process_for_status(datapoints.lower())
+        if status != -1:
+            list_statuss.append(datapoints)
+            print status, " ", textlen, " ", datapoints
+            continue
+        else:
+            print "Random Text: ",textlen, ":",datapoints
+
+    return
 
 
 def parse_lt_objs (lt_objs, page_number, text=[]):
@@ -160,6 +227,17 @@ for page in PDFPage.create_pages(document):
     # receive the LTPage object for the page.
     layout = device.get_result()
     parse_lt_objs(layout, (i+1))
-    if i > 0:
+    if i > 2:
         break
-print text_content
+
+
+print "num_ids: ", num_ids
+print "num_statuss: ", num_statuss
+print "num_dates: ", num_dates
+
+if num_ids != num_statuss and num_ids != num_dates:
+    print "FATAL!!!!"
+
+for i in range(0, num_ids):
+    print list_ids[i], list_statuss[i], list_dates[i]
+# print text_content
